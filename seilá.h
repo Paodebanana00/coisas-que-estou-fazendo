@@ -7,71 +7,73 @@
 
 /*
  * ================================================================
- * RGB PWM HARDWARE - RP2040 / ChibiOS
+ * RGB PWM HARDWARE
+ * ================================================================
+ *
+ * RP2040:
  *
  * GP22 -> PWM3A -> VERMELHO
  * GP26 -> PWM5A -> VERDE
  * GP28 -> PWM6A -> AZUL
  *
- * Todos os canais ficam em slices PWM independentes.
+ * Os três estão em slices PWM diferentes.
+ *
+ * Frequência:
+ *
+ *     1 MHz / 256 = ~3906 Hz
+ *
  * ================================================================
  */
 
-
-/* ================================================================
- * CONFIGURAÇÃO GERAL
- * ================================================================
- */
 
 /*
- * Clock do contador PWM.
- *
- * 1 MHz / 256 ~= 3906 Hz
+ * ================================================================
+ * PWM
+ * ================================================================
  */
+
 #define RGB_PWM_CLOCK       1000000U
 #define RGB_PWM_PERIOD      255U
 
 
 /*
- * Intensidade máxima geral.
+ * ================================================================
+ * LIMITE FÍSICO
+ * ================================================================
  *
  * 255 = 100%
  *
+ * 100 = ~39%
+ *
  * Começamos conservadores por causa dos 70 LEDs.
- * Depois você pode aumentar.
+ *
+ * Depois de medir a corrente, você pode aumentar.
+ * ================================================================
  */
+
 #define RGB_PWM_MAX         100U
 
 
 /*
- * Correção individual dos canais.
+ * ================================================================
+ * BALANÇO DE BRANCO
+ * ================================================================
  *
- * Vermelho: 100%
- * Verde:    ~59%
- * Azul:     ~78%
+ * Vermelho = 100%
+ * Verde    = 150/255
+ * Azul     = 200/255
+ *
+ * Estes valores são fáceis de alterar depois.
+ * ================================================================
  */
-#define RGB_PWM_RED_SCALE   255U
-#define RGB_PWM_GREEN_SCALE 150U
-#define RGB_PWM_BLUE_SCALE  200U
+
+#define RGB_PWM_RED_SCALE       255U
+#define RGB_PWM_GREEN_SCALE     150U
+#define RGB_PWM_BLUE_SCALE      200U
 
 
 /*
- * Defasagem.
- *
- * 0     = vermelho
- * 85    = ~120 graus
- * 170   = ~240 graus
- *
- * Como o período é 255 contagens:
- *
- * 255 / 3 ~= 85
- */
-#define RGB_PWM_PHASE_R     0U
-#define RGB_PWM_PHASE_G     85U
-#define RGB_PWM_PHASE_B     170U
-
-
-/* ================================================================
+ * ================================================================
  * DRIVERS
  * ================================================================
  */
@@ -86,8 +88,9 @@
 #define RGB_PWM_BLUE_CHANNEL    0
 
 
-/* ================================================================
- * CORES RECEBIDAS DO RGBLIGHT
+/*
+ * ================================================================
+ * COR ATUAL DO RGBLIGHT
  * ================================================================
  */
 
@@ -98,8 +101,11 @@ static volatile uint8_t rgb_pwm_b = 0;
 static volatile bool rgb_pwm_dirty = false;
 
 
-/* ================================================================
- * CONFIGURAÇÃO DOS PWM
+/*
+ * ================================================================
+ * CONFIGURAÇÃO PWM3
+ *
+ * GP22 = PWM3A
  * ================================================================
  */
 
@@ -116,6 +122,14 @@ static const PWMConfig rgb_pwm_cfg_3 = {
 };
 
 
+/*
+ * ================================================================
+ * CONFIGURAÇÃO PWM5
+ *
+ * GP26 = PWM5A
+ * ================================================================
+ */
+
 static const PWMConfig rgb_pwm_cfg_5 = {
     RGB_PWM_CLOCK,
     RGB_PWM_PERIOD,
@@ -128,6 +142,14 @@ static const PWMConfig rgb_pwm_cfg_5 = {
     }
 };
 
+
+/*
+ * ================================================================
+ * CONFIGURAÇÃO PWM6
+ *
+ * GP28 = PWM6A
+ * ================================================================
+ */
 
 static const PWMConfig rgb_pwm_cfg_6 = {
     RGB_PWM_CLOCK,
@@ -142,7 +164,8 @@ static const PWMConfig rgb_pwm_cfg_6 = {
 };
 
 
-/* ================================================================
+/*
+ * ================================================================
  * ESCALA
  * ================================================================
  */
@@ -151,13 +174,33 @@ static inline uint8_t rgb_pwm_scale(
     uint8_t value,
     uint8_t scale
 ) {
-    return (uint8_t)(((uint16_t)value * scale) / 255U);
+    return (uint8_t)(
+        ((uint16_t)value * scale) / 255U
+    );
 }
 
 
 /*
- * Aplica o limite geral de intensidade.
+ * ================================================================
+ * LIMITE FÍSICO
+ * ================================================================
+ *
+ * Preserva a proporcionalidade do brilho.
+ *
+ * Exemplo:
+ *
+ * RGBLIGHT = 255
+ * MAX      = 100
+ *
+ * resultado = 100
+ *
+ * RGBLIGHT = 128
+ * MAX      = 100
+ *
+ * resultado ~= 50
+ * ================================================================
  */
+
 static inline uint8_t rgb_pwm_limit(
     uint8_t value
 ) {
@@ -167,30 +210,26 @@ static inline uint8_t rgb_pwm_limit(
 }
 
 
-/* ================================================================
- * RGBLIGHT -> NOSSO DRIVER
+/*
+ * ================================================================
+ * RGBLIGHT CUSTOM DRIVER
  * ================================================================
  *
- * O RGBLIGHT fornece R/G/B como uint8_t.
- *
- * Aqui NÃO fazemos HSV.
- *
- * O QMK já fez:
- *
- * HSV -> RGB
+ * O QMK calcula HSV -> RGB.
  *
  * Nós recebemos:
  *
- * R 0..255
- * G 0..255
- * B 0..255
+ *     R = 0..255
+ *     G = 0..255
+ *     B = 0..255
+ *
+ * e guardamos esses valores.
+ * ================================================================
  */
 
 void rgblight_driver_init(void) {
     /*
-     * Nada aqui.
-     *
-     * O hardware será iniciado por rgb_pwm_init().
+     * O hardware é inicializado em rgb_pwm_init().
      */
 }
 
@@ -203,13 +242,6 @@ void rgblight_driver_set_color(
 ) {
     (void)index;
 
-    /*
-     * Como nosso hardware possui apenas um conjunto
-     * físico R/G/B, não precisamos armazenar cada LED
-     * individualmente.
-     *
-     * Pegamos a cor calculada pelo RGBLIGHT.
-     */
     rgb_pwm_r = r;
     rgb_pwm_g = g;
     rgb_pwm_b = b;
@@ -233,12 +265,15 @@ void rgblight_driver_set_color_all(
 
 void rgblight_driver_flush(void) {
     /*
-     * O PWM é atualizado pela thread.
+     * Nada aqui.
+     *
+     * A thread aplica o PWM.
      */
 }
 
 
-/* ================================================================
+/*
+ * ================================================================
  * THREAD
  * ================================================================
  */
@@ -259,9 +294,9 @@ static THD_FUNCTION(
 
 
     /*
-     * ------------------------------------------------------------
-     * Inicializa os três slices PWM.
-     * ------------------------------------------------------------
+     * ============================================================
+     * INICIA OS TRÊS SLICES
+     * ============================================================
      */
 
     pwmStart(
@@ -281,15 +316,9 @@ static THD_FUNCTION(
 
 
     /*
-     * ------------------------------------------------------------
-     * Pinos em função PWM.
-     *
-     * RP2040:
-     *
-     * GP22 = PWM3A
-     * GP26 = PWM5A
-     * GP28 = PWM6A
-     * ------------------------------------------------------------
+     * ============================================================
+     * CONFIGURA OS GPIOs PARA PWM
+     * ============================================================
      */
 
     palSetLineMode(
@@ -309,9 +338,9 @@ static THD_FUNCTION(
 
 
     /*
-     * ------------------------------------------------------------
-     * Começa desligado.
-     * ------------------------------------------------------------
+     * ============================================================
+     * COMEÇA DESLIGADO
+     * ============================================================
      */
 
     pwmEnableChannel(
@@ -334,18 +363,19 @@ static THD_FUNCTION(
 
 
     /*
-     * ------------------------------------------------------------
+     * ============================================================
      * LOOP
-     * ------------------------------------------------------------
+     * ============================================================
      */
 
     while (true) {
 
         /*
-         * RGBLIGHT desligado:
-         *
-         * força tudo para zero.
+         * --------------------------------------------------------
+         * RGBLIGHT DESLIGADO
+         * --------------------------------------------------------
          */
+
         if (!rgblight_is_enabled()) {
 
             pwmEnableChannel(
@@ -366,7 +396,16 @@ static THD_FUNCTION(
                 0
             );
 
-        } else if (rgb_pwm_dirty) {
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * NOVA COR RECEBIDA
+         * --------------------------------------------------------
+         */
+
+        else if (rgb_pwm_dirty) {
 
             uint8_t r;
             uint8_t g;
@@ -374,19 +413,22 @@ static THD_FUNCTION(
 
 
             /*
-             * Copia os valores produzidos pelo RGBLIGHT.
+             * Faz uma cópia rápida dos valores.
              */
+            chSysLock();
+
             r = rgb_pwm_r;
             g = rgb_pwm_g;
             b = rgb_pwm_b;
 
-
             rgb_pwm_dirty = false;
+
+            chSysUnlock();
 
 
             /*
              * ----------------------------------------------------
-             * LIMITADOR GERAL
+             * LIMITE GERAL DE INTENSIDADE
              * ----------------------------------------------------
              */
 
@@ -419,7 +461,7 @@ static THD_FUNCTION(
 
             /*
              * ----------------------------------------------------
-             * APLICA DUTY
+             * PWM VERMELHO
              * ----------------------------------------------------
              */
 
@@ -429,11 +471,25 @@ static THD_FUNCTION(
                 r
             );
 
+
+            /*
+             * ----------------------------------------------------
+             * PWM VERDE
+             * ----------------------------------------------------
+             */
+
             pwmEnableChannel(
                 RGB_PWM_GREEN_DRIVER,
                 RGB_PWM_GREEN_CHANNEL,
                 g
             );
+
+
+            /*
+             * ----------------------------------------------------
+             * PWM AZUL
+             * ----------------------------------------------------
+             */
 
             pwmEnableChannel(
                 RGB_PWM_BLUE_DRIVER,
@@ -444,31 +500,43 @@ static THD_FUNCTION(
 
 
         /*
-         * Muito importante:
+         * --------------------------------------------------------
+         * DEVOLVE A CPU AO CHIBIOS/QMK
+         * --------------------------------------------------------
          *
-         * Essa thread NÃO fica monopolizando a CPU.
+         * Isso é importante.
+         *
+         * A thread não fica ocupando a CPU.
          *
          * O QMK continua processando:
          *
-         * teclas
-         * USB
-         * layers
-         * timers
-         * RGBLIGHT
-         * etc.
+         * - matriz de teclas
+         * - USB
+         * - keycodes
+         * - layers
+         * - timers
+         * - RGBLIGHT
+         * - etc.
+         * --------------------------------------------------------
          */
+
         chThdSleepMilliseconds(1);
     }
 }
 
 
-/* ================================================================
- * INICIALIZAÇÃO PÚBLICA
+/*
+ * ================================================================
+ * INICIALIZAÇÃO
  * ================================================================
  */
 
 static inline void rgb_pwm_init(void) {
 
+    /*
+     * Cria a thread em prioridade abaixo da atividade normal
+     * do teclado.
+     */
     chThdCreateStatic(
         waRgbPwmThread,
         sizeof(waRgbPwmThread),
