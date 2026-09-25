@@ -106,3 +106,6 @@ RGBLIGHT_DRIVER = dummy
 # Inclui o seu motor RGB customizado na compilação do gmake
 SRC += rgb_anodo_comum.c
 
+void keyboard_post_init_user(void) {
+    rgb_pwm_init();
+}
