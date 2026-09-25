@@ -1,7 +1,6 @@
 #include "ch.h"
 #include "hal.h"
 #include "rgblight.h" // Traz as estruturas e animações nativas do QMK
-#include "hardware/pwm.h"
 
 // ====================================================================
 // CONFIGURAÇÕES DOS TIMERS DE PWM POR HARDWARE (RP2040 / ChibiOS)
@@ -49,12 +48,13 @@ static THD_FUNCTION(LedThread, arg) {
     (void)arg;
     chRegSetThreadName("hardware_pwm_manager");
     
-    // Inicializa os blocos elétricos de hardware
+    // Inicializa os blocos elétricos de hardware através do HAL do ChibiOS
     pwmStart(DRIVER_VERMELHO, &pwmcfg_3);
     pwmStart(DRIVER_VERDE_AZUL, &pwmcfg_5);
 
-    // MÁGICA DO PHASE-SHIFTING: Inverte a polaridade física do Bloco 5.
-    // O Verde e o Azul ligam na rampa oposta do Vermelho, distribuindo a carga na USB!
+    // CORREÇÃO SEM SDK: Acessando os registradores usando as estruturas internas do ChibiOS.
+    // Usamos a setinha (->) pois CH agora aponta corretamente para o layout de memória do chip.
+    // Bit 2 do CSR ativa a inversão física do Canal B (Salva os C945 e divide a carga na USB!)
     PWMD5.pwm->CH->CSR |= (1 << 2); 
 
     // Alinha os cronômetros no mesmo nanossegundo absoluto de partida
@@ -67,8 +67,8 @@ static THD_FUNCTION(LedThread, arg) {
             target_r = 0; target_g = 0; target_b = 0;
         } 
         else {
-            // ROUBO DE SINAL: O QMK guarda os LEDs calculados no array 'leds'
-            // Lemos a cor do LED 0 (o nosso LED virtual que está rodando a animação selecionada)
+            // ROUBO DE SINAL: O array global 'leds' do QMK é um ponteiro/array.
+            // Lemos o primeiro índice [0] do LED virtual que está rodando a animação.
             uint8_t r_qmk = leds[0].r;
             uint8_t g_qmk = leds[0].g;
             uint8_t b_qmk = leds[0].b;
@@ -84,14 +84,14 @@ static THD_FUNCTION(LedThread, arg) {
         pwmEnableChannel(DRIVER_VERDE_AZUL, CANAL_VERDE, target_g);
         pwmEnableChannel(DRIVER_VERDE_AZUL, CANAL_AZUL, target_b);
 
-        // 10ms deixa todas as animações nativas do QMK (Arco-Íris, Ondas, Pulso) ultra fluidas
+        // 10ms deixa todas as animações nativas do QMK ultra fluidas
         chThdSleepMilliseconds(10);
     }
 }
 
 // Gancho de inicialização automática do QMK
 void keyboard_post_init_user(void) {
-    // Redireciona os pinos físicos da Pico para as saídas alternativas de PWM (Alternate 4)
+    // Redireciona os pinos físicos da Pico usando as definições de linhas (PAL) do ChibiOS
     palSetLineMode(GP22, PAL_MODE_ALTERNATE(4)); 
     palSetLineMode(GP26, PAL_MODE_ALTERNATE(4)); 
     palSetLineMode(GP27, PAL_MODE_ALTERNATE(4)); 
