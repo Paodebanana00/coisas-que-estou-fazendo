@@ -50,3 +50,59 @@
                                    [RESISTÊNCIA MANOPLA] ┘
                                    Tomada AC (Fase 2) ───────────────────────────┐
                                    Fio Terra da Tomada ──► [Carcaça do Bocal] ───┘
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   #pragma once
+config.h
+// Ativa o motor do RGBLIGHT do QMK
+#define RGBLIGHT_ENABLE
+
+// Definimos apenas 1 LED virtual (o "espelho" que vamos roubar a cor)
+#define RGBLED_NUM 1
+
+// TRAVA DE SEGURANÇA MÁXIMA: O QMK nunca vai gerar um brilho (Value) maior que 85 de 255
+// Isso garante que os C945 nunca trabalhem acima de 33% de Duty Cycle médio!
+#define RGBLIGHT_LIMIT_VAL 85
+
+______________________________________________________________________________.mk
+# Ativa o sistema RGBLIGHT nativo
+RGBLIGHT_ENABLE = yes
+
+# Define o driver como "dummy" (virtual/fictício) para não gerar protocolo digital nos pinos
+RGBLIGHT_DRIVER = dummy
+
+# Inclui o seu motor RGB customizado na compilação do gmake
+SRC += rgb_anodo_comum.c
+
