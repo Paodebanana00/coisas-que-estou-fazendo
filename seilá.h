@@ -1,101 +1,227 @@
+#pragma once
+
+#include "quantum.h"
 #include "ch.h"
 #include "hal.h"
-#include "rgblight.h" // Traz as estruturas e animações nativas do QMK
+#include "rgblight.h"
 
-// ====================================================================
-// CONFIGURAÇÕES DOS TIMERS DE PWM POR HARDWARE (RP2040 / ChibiOS)
-// ====================================================================
+/* ================================================================
+ * CONFIGURAÇÃO
+ * ================================================================ */
 
-// Bloco 3 (Vermelho): Normal (Active High)
-static const PWMConfig pwmcfg_3 = {
-  1000000, /* Clock de 1MHz */
-  255,     /* Período de 255 passos (8-bits) */
-  NULL,
-  {
-    {PWM_OUTPUT_ACTIVE_HIGH, NULL}, // Canal 0 (Saída A do Bloco 3 -> GP22)
-    {PWM_OUTPUT_DISABLED, NULL}     // Canal 1 Desativado
-  }
+#define RGB_PWM_CLOCK       1000000U
+#define RGB_PWM_PERIOD      255U
+
+#define DRIVER_VERMELHO     (&PWMD3)
+#define DRIVER_VERDE_AZUL   (&PWMD5)
+
+#define CANAL_VERMELHO      0
+#define CANAL_VERDE         0
+#define CANAL_AZUL          1
+
+/* ================================================================
+ * COR RECEBIDA DO RGBLIGHT
+ * ================================================================ */
+
+static volatile uint8_t rgb_pwm_r = 0;
+static volatile uint8_t rgb_pwm_g = 0;
+static volatile uint8_t rgb_pwm_b = 0;
+
+static volatile bool rgb_pwm_dirty = false;
+
+/* ================================================================
+ * PWM CONFIG
+ * ================================================================ */
+
+static const PWMConfig rgb_pwm_cfg_3 = {
+    RGB_PWM_CLOCK,
+    RGB_PWM_PERIOD,
+    NULL,
+    {
+        {PWM_OUTPUT_ACTIVE_HIGH, NULL},
+        {PWM_OUTPUT_DISABLED, NULL},
+        {PWM_OUTPUT_DISABLED, NULL},
+        {PWM_OUTPUT_DISABLED, NULL}
+    }
 };
 
-// Bloco 5 (Verde/Azul): Também Active High para os transistores NPN
-static const PWMConfig pwmcfg_5 = {
-  1000000, /* Clock de 1MHz */
-  255,     /* Período de 255 passos (8-bits) */
-  NULL,
-  {
-    {PWM_OUTPUT_ACTIVE_HIGH, NULL},  // Canal 0 (Saída A do Bloco 5 -> GP26)
-    {PWM_OUTPUT_ACTIVE_HIGH, NULL}   // Canal 1 (Saída B do Bloco 5 -> GP27)
-  }
-};  
+static const PWMConfig rgb_pwm_cfg_5 = {
+    RGB_PWM_CLOCK,
+    RGB_PWM_PERIOD,
+    NULL,
+    {
+        {PWM_OUTPUT_ACTIVE_HIGH, NULL},
+        {PWM_OUTPUT_ACTIVE_HIGH, NULL},
+        {PWM_OUTPUT_DISABLED, NULL},
+        {PWM_OUTPUT_DISABLED, NULL}
+    }
+};
 
-#define DRIVER_VERMELHO   &PWMD3
-#define CANAL_VERMELHO    0  // GP22
+/* ================================================================
+ * RGBLIGHT CUSTOM DRIVER
+ * ================================================================ */
 
-#define DRIVER_VERDE_AZUL &PWMD5
-#define CANAL_VERDE       0  // GP26
-#define CANAL_AZUL        1  // GP27
+void rgblight_driver_init(void) {
+}
 
-// Alvos de brilho instantâneos de hardware
-static uint8_t target_r = 0;
-static uint8_t target_g = 0;
-static uint8_t target_b = 0;
+void rgblight_driver_set_color(
+    int index,
+    uint8_t r,
+    uint8_t g,
+    uint8_t b
+) {
+    (void)index;
 
-// ====================================================================
-// THREAD DE GERENCIAMENTO PWM COM INTERCEPTAÇÃO E PHASE-SHIFTING
-// ====================================================================
-static THD_WORKING_AREA(waLedThread, 128);
-static THD_FUNCTION(LedThread, arg) {
+    rgb_pwm_r = r;
+    rgb_pwm_g = g;
+    rgb_pwm_b = b;
+
+    rgb_pwm_dirty = true;
+}
+
+void rgblight_driver_set_color_all(
+    uint8_t r,
+    uint8_t g,
+    uint8_t b
+) {
+    rgb_pwm_r = r;
+    rgb_pwm_g = g;
+    rgb_pwm_b = b;
+
+    rgb_pwm_dirty = true;
+}
+
+void rgblight_driver_flush(void) {
+}
+
+/* ================================================================
+ * BALANÇO DE BRANCO
+ * ================================================================ */
+
+static inline uint8_t rgb_pwm_scale(
+    uint8_t value,
+    uint8_t scale
+) {
+    return ((uint16_t)value * scale) / 255U;
+}
+
+/* ================================================================
+ * THREAD
+ * ================================================================ */
+
+static THD_WORKING_AREA(waRgbPwmThread, 256);
+
+static THD_FUNCTION(RgbPwmThread, arg) {
     (void)arg;
-    chRegSetThreadName("hardware_pwm_manager");
-    
-    // Inicializa os blocos elétricos de hardware através do HAL do ChibiOS
-    pwmStart(DRIVER_VERMELHO, &pwmcfg_3);
-    pwmStart(DRIVER_VERDE_AZUL, &pwmcfg_5);
 
-    // CORREÇÃO SEM SDK: Acessando os registradores usando as estruturas internas do ChibiOS.
-    // Usamos a setinha (->) pois CH agora aponta corretamente para o layout de memória do chip.
-    // Bit 2 do CSR ativa a inversão física do Canal B (Salva os C945 e divide a carga na USB!)
-    PWMD5.pwm->CH->CSR |= (1 << 2); 
+    chRegSetThreadName("rgb_pwm");
 
-    // Alinha os cronômetros no mesmo nanossegundo absoluto de partida
-    PWMD3.pwm->CH->CTR = 0;
-    PWMD5.pwm->CH->CTR = 0;
+    pwmStart(DRIVER_VERMELHO, &rgb_pwm_cfg_3);
+    pwmStart(DRIVER_VERDE_AZUL, &rgb_pwm_cfg_5);
+
+    pwmEnableChannel(
+        DRIVER_VERMELHO,
+        CANAL_VERMELHO,
+        0
+    );
+
+    pwmEnableChannel(
+        DRIVER_VERDE_AZUL,
+        CANAL_VERDE,
+        0
+    );
+
+    pwmEnableChannel(
+        DRIVER_VERDE_AZUL,
+        CANAL_AZUL,
+        0
+    );
 
     while (true) {
-        // Se o LED geral estiver desativado no QMK, força o estado zero elétrico
-        if (!rgblight_is_enabled()) {
-            target_r = 0; target_g = 0; target_b = 0;
-        } 
-        else {
-            // ROUBO DE SINAL: O array global 'leds' do QMK é um ponteiro/array.
-            // Lemos o primeiro índice [0] do LED virtual que está rodando a animação.
-            uint8_t r_qmk = leds[0].r;
-            uint8_t g_qmk = leds[0].g;
-            uint8_t b_qmk = leds[0].b;
 
-            // BALANÇO DE BRANCO DA SUCATA (Para resistores de 80R e 40R nas 5 fileiras)
-            target_r = r_qmk;
-            target_g = (g_qmk * 150) / 255; // Capa o "Verde-Shrek" para ~60% do brilho
-            target_b = (b_qmk * 200) / 255; // Ajusta o Azul solto/resistor de 470R para ~80%
+        if (!rgblight_is_enabled()) {
+
+            pwmEnableChannel(
+                DRIVER_VERMELHO,
+                CANAL_VERMELHO,
+                0
+            );
+
+            pwmEnableChannel(
+                DRIVER_VERDE_AZUL,
+                CANAL_VERDE,
+                0
+            );
+
+            pwmEnableChannel(
+                DRIVER_VERDE_AZUL,
+                CANAL_AZUL,
+                0
+            );
+
+        } else if (rgb_pwm_dirty) {
+
+            uint8_t r = rgb_pwm_r;
+            uint8_t g = rgb_pwm_g;
+            uint8_t b = rgb_pwm_b;
+
+            rgb_pwm_dirty = false;
+
+            /*
+             * Seu ajuste de balanço de branco.
+             */
+            g = rgb_pwm_scale(g, 150);
+            b = rgb_pwm_scale(b, 200);
+
+            pwmEnableChannel(
+                DRIVER_VERMELHO,
+                CANAL_VERMELHO,
+                r
+            );
+
+            pwmEnableChannel(
+                DRIVER_VERDE_AZUL,
+                CANAL_VERDE,
+                g
+            );
+
+            pwmEnableChannel(
+                DRIVER_VERDE_AZUL,
+                CANAL_AZUL,
+                b
+            );
         }
 
-        // ENVIANDO OS VALORES DIRETAMENTE PARA O DUTY CYCLE DO HARDWARE
-        pwmEnableChannel(DRIVER_VERMELHO, CANAL_VERMELHO, target_r);
-        pwmEnableChannel(DRIVER_VERDE_AZUL, CANAL_VERDE, target_g);
-        pwmEnableChannel(DRIVER_VERDE_AZUL, CANAL_AZUL, target_b);
-
-        // 10ms deixa todas as animações nativas do QMK ultra fluidas
-        chThdSleepMilliseconds(10);
+        chThdSleepMilliseconds(1);
     }
 }
 
-// Gancho de inicialização automática do QMK
-void keyboard_post_init_user(void) {
-    // Redireciona os pinos físicos da Pico usando as definições de linhas (PAL) do ChibiOS
-    palSetLineMode(GP22, PAL_MODE_ALTERNATE(4)); 
-    palSetLineMode(GP26, PAL_MODE_ALTERNATE(4)); 
-    palSetLineMode(GP27, PAL_MODE_ALTERNATE(4)); 
+/* ================================================================
+ * INICIALIZAÇÃO
+ * ================================================================ */
 
-    // Dispara a Thread em segundo plano no ChibiOS com prioridade segura
-    chThdCreateStatic(waLedThread, sizeof(waLedThread), NORMALPRIO - 1, LedThread, NULL);
+static inline void rgb_pwm_init(void) {
+
+    palSetLineMode(
+        GP22,
+        PAL_MODE_ALTERNATE_PWM
+    );
+
+    palSetLineMode(
+        GP26,
+        PAL_MODE_ALTERNATE_PWM
+    );
+
+    palSetLineMode(
+        GP27,
+        PAL_MODE_ALTERNATE_PWM
+    );
+
+    chThdCreateStatic(
+        waRgbPwmThread,
+        sizeof(waRgbPwmThread),
+        NORMALPRIO - 1,
+        RgbPwmThread,
+        NULL
+    );
 }
