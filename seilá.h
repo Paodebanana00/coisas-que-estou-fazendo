@@ -30,9 +30,19 @@
 #define RGB_PWM_GREEN_DRIVER    (&PWMD5)
 #define RGB_PWM_BLUE_DRIVER     (&PWMD6)
 
-#define RGB_PWM_RED_CHANNEL     RP2040_PWM_CHANNEL_A
-#define RGB_PWM_GREEN_CHANNEL   RP2040_PWM_CHANNEL_A
-#define RGB_PWM_BLUE_CHANNEL    RP2040_PWM_CHANNEL_A
+/*
+ * IMPORTANTE:
+ *
+ * pwmEnableChannel() usa índice começando em 0.
+ *
+ * CHANNEL 0 = PWM A
+ *
+ * RP2040_PWM_CHANNEL_A vale 1, então não deve ser passado
+ * diretamente para pwmEnableChannel().
+ */
+#define RGB_PWM_RED_CHANNEL     0
+#define RGB_PWM_GREEN_CHANNEL   0
+#define RGB_PWM_BLUE_CHANNEL    0
 
 /* ================================================================
  * PIN MODE
@@ -149,22 +159,31 @@ static inline void rgb_pwm_write(
         b
     );
 
+    /*
+     * IMPORTANTE:
+     *
+     * Agora cada canal recebe seu respectivo duty.
+     *
+     * Antes estava fixo em 128, portanto qualquer cor
+     * acabava gerando aproximadamente 50% nos três canais.
+     */
+
     pwmEnableChannel(
         RGB_PWM_RED_DRIVER,
         RGB_PWM_RED_CHANNEL,
-        128
+        r
     );
 
     pwmEnableChannel(
         RGB_PWM_GREEN_DRIVER,
         RGB_PWM_GREEN_CHANNEL,
-        128
+        g
     );
 
     pwmEnableChannel(
         RGB_PWM_BLUE_DRIVER,
         RGB_PWM_BLUE_CHANNEL,
-        128
+        b
     );
 }
 
