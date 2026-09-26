@@ -1,256 +1,209 @@
 #pragma once
 
-/*
- * ================================================================
- * INCLUDES
- * ================================================================
- */
-
 #include "quantum.h"
-#include "ch.h"
-#include "hal.h"
 #include "rgblight.h"
-
-/*
- * API de baixo nível do PWM do RP2040.
- *
- * Usada somente para o phase shifting.
- */
-
-#include "hardware/pwm.h"
-
+#include "rgblight_drivers.h"
+#include "hal.h"
 
 /*
  * ================================================================
- * CONFIGURAÇÃO GERAL
+ * RGB PWM - RP2040 / ChibiOS
+ * ================================================================
+ *
+ * GP22 -> PWM3A -> RED
+ * GP26 -> PWM5A -> GREEN
+ * GP28 -> PWM6A -> BLUE
+ *
+ * PWM clock  = 1 MHz
+ * PWM period = 255
+ *
+ * PHASE SHIFT:
+ *
+ * RED   ->   0
+ * GREEN ->  85
+ * BLUE  -> 170
+ *
+ * Aproximadamente:
+ *
+ * RED   =   0°
+ * GREEN = 120°
+ * BLUE  = 240°
+ *
  * ================================================================
  */
 
+/* ================================================================
+ * RP2040 PWM REGISTERS
+ * ================================================================
+ *
+ * NÃO usamos Pico SDK aqui.
+ *
+ * Acesso direto aos registradores do RP2040.
+ *
+ * PWM base:
+ *
+ *     0x40050000
+ *
+ * Cada slice ocupa 0x14 bytes:
+ *
+ *     +0x00 = CSR
+ *     +0x04 = DIV
+ *     +0x08 = CTR
+ *     +0x0C = CC
+ *     +0x10 = TOP
+ *
+ * Registrador global:
+ *
+ *     +0xA0 = EN
+ *
+ * ================================================================
+ */
+
+#define RGB_PWM_BASE_ADDRESS       0x40050000UL
+
+#define RGB_PWM_SLICE_SIZE         0x14UL
+
+#define RGB_PWM_CSR_OFFSET         0x00UL
+#define RGB_PWM_DIV_OFFSET         0x04UL
+#define RGB_PWM_CTR_OFFSET         0x08UL
+#define RGB_PWM_CC_OFFSET          0x0CUL
+#define RGB_PWM_TOP_OFFSET         0x10UL
+
+#define RGB_PWM_EN_OFFSET          0xA0UL
+
+#define RGB_PWM_REG32(address) \
+    (*(volatile uint32_t *)(address))
+
+#define RGB_PWM_SLICE_REG(slice, offset) \
+    RGB_PWM_REG32( \
+        RGB_PWM_BASE_ADDRESS + \
+        ((uint32_t)(slice) * RGB_PWM_SLICE_SIZE) + \
+        (offset) \
+    )
+
+#define RGB_PWM_EN_REG \
+    RGB_PWM_REG32( \
+        RGB_PWM_BASE_ADDRESS + RGB_PWM_EN_OFFSET \
+    )
+
+/* ================================================================
+ * DRIVERS
+ * ================================================================ */
+
+#define RGB_PWM_RED_DRIVER      (&PWMD3)
+#define RGB_PWM_GREEN_DRIVER    (&PWMD5)
+#define RGB_PWM_BLUE_DRIVER     (&PWMD6)
 
 /*
- * ================================================================
- * PHASE SHIFT
- * ================================================================
+ * pwmEnableChannel() usa índice começando em 0.
  *
- * 0 = PWM normal
- *
- * 1 = tentativa de phase shifting:
- *
- *     R =   0°
- *     G = 120°
- *     B = 240°
- *
- * Comece testando com 0.
- *
- * Depois altere para 1.
+ * CHANNEL 0 = PWM A
  */
+#define RGB_PWM_RED_CHANNEL     0
+#define RGB_PWM_GREEN_CHANNEL   0
+#define RGB_PWM_BLUE_CHANNEL    0
 
-#define RGB_PWM_PHASE_SHIFT_ENABLE 0
+/* ================================================================
+ * PWM SLICES
+ * ================================================================ */
 
+#define RGB_PWM_RED_SLICE       3U
+#define RGB_PWM_GREEN_SLICE     5U
+#define RGB_PWM_BLUE_SLICE      6U
 
-/*
- * ================================================================
- * CLOCK E PERÍODO
- * ================================================================
- *
- * 1 MHz / 256
- *
- * ≈ 3906 Hz
- */
+/* ================================================================
+ * PIN MODE
+ * ================================================================ */
+
+#define RGB_PWM_PAL_MODE \
+    (PAL_MODE_ALTERNATE_PWM | PAL_RP_PAD_DRIVE12 | PAL_RP_GPIO_OE)
+
+/* ================================================================
+ * PWM
+ * ================================================================ */
 
 #define RGB_PWM_CLOCK   1000000U
 #define RGB_PWM_PERIOD  255U
 
+/* ================================================================
+ * PHASE SHIFT
+ * ================================================================ */
 
-/*
- * ================================================================
- * LIMITE ELÉTRICO
- * ================================================================
- *
- * 255 = 100%
- *
- * 100 ≈ 39%
- *
- * Esse valor limita o duty máximo enviado aos LEDs.
- *
- * IMPORTANTE:
- *
- * Isso NÃO é uma garantia de corrente segura.
- * É apenas um limite conservador inicial.
- */
+#define RGB_PWM_PHASE_RED       0U
+#define RGB_PWM_PHASE_GREEN     85U
+#define RGB_PWM_PHASE_BLUE      170U
 
-#define RGB_PWM_MAX 100U
-
-
-/*
- * ================================================================
- * BALANÇO DE BRANCO
- * ================================================================
- *
- * Cada canal pode ter uma escala diferente.
- *
- * Vermelho = 255/255
- * Verde    = 150/255
- * Azul     = 200/255
- */
+/* ================================================================
+ * WHITE BALANCE
+ * ================================================================ */
 
 #define RGB_PWM_RED_SCALE    255U
-#define RGB_PWM_GREEN_SCALE  150U
-#define RGB_PWM_BLUE_SCALE   200U
+#define RGB_PWM_GREEN_SCALE  255U
+#define RGB_PWM_BLUE_SCALE   255U
 
-
-/*
- * ================================================================
- * PINOS / SLICES
- * ================================================================
- *
- * RP2040:
- *
- * GP22 -> PWM3A
- * GP26 -> PWM5A
- * GP28 -> PWM6A
- */
-
-#define RGB_PWM_RED_SLICE    3U
-#define RGB_PWM_GREEN_SLICE  5U
-#define RGB_PWM_BLUE_SLICE   6U
-
-
-/*
- * Drivers ChibiOS.
- */
-
-#define RGB_PWM_RED_DRIVER    (&PWMD3)
-#define RGB_PWM_GREEN_DRIVER  (&PWMD5)
-#define RGB_PWM_BLUE_DRIVER   (&PWMD6)
-
-
-/*
- * Todos usamos canal A.
- */
-
-#define RGB_PWM_RED_CHANNEL    0
-#define RGB_PWM_GREEN_CHANNEL  0
-#define RGB_PWM_BLUE_CHANNEL   0
-
-
-/*
- * ================================================================
- * MÁSCARA DOS SLICES
- * ================================================================
- */
-
-#define RGB_PWM_SLICE_MASK \
-    ((1U << RGB_PWM_RED_SLICE)   | \
-     (1U << RGB_PWM_GREEN_SLICE) | \
-     (1U << RGB_PWM_BLUE_SLICE))
-
-
-/*
- * ================================================================
- * FASES
- * ================================================================
- *
- * Período = 256 contagens.
- *
- * 256 / 3 ≈ 85,33
- *
- * Portanto usamos aproximadamente:
- *
- * R =   0°
- * G = 120°
- * B = 240°
- *
- * A discretização em 8 bits impede que seja exatamente
- * 120°/240°.
- */
-
-#define RGB_PWM_PHASE_R 0U
-#define RGB_PWM_PHASE_G 85U
-#define RGB_PWM_PHASE_B 170U
-
-
-/*
- * ================================================================
- * CORES ATUAIS
- * ================================================================
- */
-
-static volatile uint8_t rgb_pwm_r = 0;
-static volatile uint8_t rgb_pwm_g = 0;
-static volatile uint8_t rgb_pwm_b = 0;
-
-static volatile bool rgb_pwm_dirty = false;
-
-
-/*
- * ================================================================
- * CONFIGURAÇÃO PWM3
- *
- * GP22 -> PWM3A
- * ================================================================
- */
+/* ================================================================
+ * PWM CONFIG
+ * ================================================================ */
 
 static const PWMConfig rgb_pwm_cfg_3 = {
-    RGB_PWM_CLOCK,
-    RGB_PWM_PERIOD,
-    NULL,
-    {
-        {PWM_OUTPUT_ACTIVE_HIGH, NULL},
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_DISABLED, NULL}
+    .frequency = RGB_PWM_CLOCK,
+    .period    = RGB_PWM_PERIOD,
+    .callback  = NULL,
+    .channels  = {
+        [0] = {
+            .mode     = PWM_OUTPUT_ACTIVE_HIGH,
+            .callback = NULL
+        },
+        [1] = {
+            .mode     = PWM_OUTPUT_DISABLED,
+            .callback = NULL
+        }
     }
 };
-
-
-/*
- * ================================================================
- * CONFIGURAÇÃO PWM5
- *
- * GP26 -> PWM5A
- * ================================================================
- */
 
 static const PWMConfig rgb_pwm_cfg_5 = {
-    RGB_PWM_CLOCK,
-    RGB_PWM_PERIOD,
-    NULL,
-    {
-        {PWM_OUTPUT_ACTIVE_HIGH, NULL},
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_DISABLED, NULL}
+    .frequency = RGB_PWM_CLOCK,
+    .period    = RGB_PWM_PERIOD,
+    .callback  = NULL,
+    .channels  = {
+        [0] = {
+            .mode     = PWM_OUTPUT_ACTIVE_HIGH,
+            .callback = NULL
+        },
+        [1] = {
+            .mode     = PWM_OUTPUT_DISABLED,
+            .callback = NULL
+        }
     }
 };
-
-
-/*
- * ================================================================
- * CONFIGURAÇÃO PWM6
- *
- * GP28 -> PWM6A
- * ================================================================
- */
 
 static const PWMConfig rgb_pwm_cfg_6 = {
-    RGB_PWM_CLOCK,
-    RGB_PWM_PERIOD,
-    NULL,
-    {
-        {PWM_OUTPUT_ACTIVE_HIGH, NULL},
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_DISABLED, NULL}
+    .frequency = RGB_PWM_CLOCK,
+    .period    = RGB_PWM_PERIOD,
+    .callback  = NULL,
+    .channels  = {
+        [0] = {
+            .mode     = PWM_OUTPUT_ACTIVE_HIGH,
+            .callback = NULL
+        },
+        [1] = {
+            .mode     = PWM_OUTPUT_DISABLED,
+            .callback = NULL
+        }
     }
 };
 
+/* ================================================================
+ * ESTADO
+ * ================================================================ */
 
-/*
- * ================================================================
- * ESCALA DE CANAL
- * ================================================================
- */
+static uint8_t rgb_pwm_r = 0;
+static uint8_t rgb_pwm_g = 0;
+static uint8_t rgb_pwm_b = 0;
+
+/* ================================================================
+ * SCALE
+ * ================================================================ */
 
 static inline uint8_t rgb_pwm_scale(
     uint8_t value,
@@ -261,87 +214,236 @@ static inline uint8_t rgb_pwm_scale(
     );
 }
 
+/* ================================================================
+ * PHASE SHIFT
+ * ================================================================ */
 
-/*
- * ================================================================
- * LIMITE DE DUTY
- * ================================================================
- *
- * Mantém a proporcionalidade.
- *
- * RGB = 255
- * MAX = 100
- *
- * resultado = 100
- *
- * RGB = 128
- * MAX = 100
- *
- * resultado ≈ 50
- */
+static inline void rgb_pwm_apply_phase(void) {
 
-static inline uint8_t rgb_pwm_limit(
-    uint8_t value
-) {
-    return (uint8_t)(
-        ((uint16_t)value * RGB_PWM_MAX) / 255U
+    /*
+     * Máscara dos três slices usados pelo RGB:
+     *
+     * PWM3 = bit 3
+     * PWM5 = bit 5
+     * PWM6 = bit 6
+     */
+
+    const uint32_t rgb_pwm_mask =
+        (1U << RGB_PWM_RED_SLICE) |
+        (1U << RGB_PWM_GREEN_SLICE) |
+        (1U << RGB_PWM_BLUE_SLICE);
+
+    /*
+     * ------------------------------------------------------------
+     * 1. DESABILITA SOMENTE OS TRÊS SLICES RGB
+     * ------------------------------------------------------------
+     *
+     * Preserva os demais PWM do sistema.
+     */
+
+    RGB_PWM_EN_REG &= ~rgb_pwm_mask;
+
+    /*
+     * ------------------------------------------------------------
+     * 2. POSICIONA OS CONTADORES
+     * ------------------------------------------------------------
+     */
+
+    RGB_PWM_SLICE_REG(
+        RGB_PWM_RED_SLICE,
+        RGB_PWM_CTR_OFFSET
+    ) = RGB_PWM_PHASE_RED;
+
+    RGB_PWM_SLICE_REG(
+        RGB_PWM_GREEN_SLICE,
+        RGB_PWM_CTR_OFFSET
+    ) = RGB_PWM_PHASE_GREEN;
+
+    RGB_PWM_SLICE_REG(
+        RGB_PWM_BLUE_SLICE,
+        RGB_PWM_CTR_OFFSET
+    ) = RGB_PWM_PHASE_BLUE;
+
+    /*
+     * ------------------------------------------------------------
+     * 3. HABILITA NOVAMENTE OS TRÊS
+     * ------------------------------------------------------------
+     */
+
+    RGB_PWM_EN_REG |= rgb_pwm_mask;
+}
+
+/* ================================================================
+ * DEBUG PHASE
+ * ================================================================ */
+
+static inline void rgb_pwm_debug_phase(void) {
+
+    uprintf(
+        "RGBDBG PHASE: R=%u G=%u B=%u\n",
+        (unsigned)RGB_PWM_PHASE_RED,
+        (unsigned)RGB_PWM_PHASE_GREEN,
+        (unsigned)RGB_PWM_PHASE_BLUE
+    );
+
+    uprintf(
+        "RGBDBG SLICES: R=%u G=%u B=%u\n",
+        (unsigned)RGB_PWM_RED_SLICE,
+        (unsigned)RGB_PWM_GREEN_SLICE,
+        (unsigned)RGB_PWM_BLUE_SLICE
     );
 }
 
+/* ================================================================
+ * WRITE PWM
+ * ================================================================ */
 
-/*
- * ================================================================
- * CONVERSÃO DE FASE
- * ================================================================
- *
- * Queremos deslocar a posição do pulso dentro do período.
- *
- * A posição inicial do contador é escolhida de acordo com
- * a fase desejada.
- */
-
-static inline uint16_t rgb_pwm_counter_for_phase(
-    uint16_t phase
+static inline void rgb_pwm_write(
+    uint8_t r,
+    uint8_t g,
+    uint8_t b
 ) {
-    if (phase == 0U) {
-        return 0U;
-    }
+    r = rgb_pwm_scale(
+        r,
+        RGB_PWM_RED_SCALE
+    );
 
-    return (uint16_t)(
-        (RGB_PWM_PERIOD + 1U) - phase
+    g = rgb_pwm_scale(
+        g,
+        RGB_PWM_GREEN_SCALE
+    );
+
+    b = rgb_pwm_scale(
+        b,
+        RGB_PWM_BLUE_SCALE
+    );
+
+    uprintf(
+        "RGBDBG PWM WRITE: R=%u G=%u B=%u\n",
+        r,
+        g,
+        b
+    );
+
+    /*
+     * SOMENTE altera o duty.
+     *
+     * NÃO altera os contadores.
+     *
+     * Assim o phase shift continua intacto.
+     */
+
+    pwmEnableChannel(
+        RGB_PWM_RED_DRIVER,
+        RGB_PWM_RED_CHANNEL,
+        r
+    );
+
+    pwmEnableChannel(
+        RGB_PWM_GREEN_DRIVER,
+        RGB_PWM_GREEN_CHANNEL,
+        g
+    );
+
+    pwmEnableChannel(
+        RGB_PWM_BLUE_DRIVER,
+        RGB_PWM_BLUE_CHANNEL,
+        b
     );
 }
 
-
-/*
- * ================================================================
- * RGBLIGHT DRIVER
- * ================================================================
- *
- * O RGBLIGHT fornece:
- *
- *     R = 0..255
- *     G = 0..255
- *     B = 0..255
- *
- * Nós apenas guardamos esses valores.
- */
-
-
-/*
- * Inicialização exigida pelo driver customizado.
- */
+/* ================================================================
+ * INIT
+ * ================================================================ */
 
 void rgblight_driver_init(void) {
-    /*
-     * A inicialização real dos PWM ocorre na thread.
+
+    uprintf("RGBDBG INIT 01\n");
+
+    /* PWM3 */
+    pwmStart(
+        RGB_PWM_RED_DRIVER,
+        &rgb_pwm_cfg_3
+    );
+
+    uprintf("RGBDBG INIT 02 PWM3 OK\n");
+
+    /* PWM5 */
+    pwmStart(
+        RGB_PWM_GREEN_DRIVER,
+        &rgb_pwm_cfg_5
+    );
+
+    uprintf("RGBDBG INIT 03 PWM5 OK\n");
+
+    /* PWM6 */
+    pwmStart(
+        RGB_PWM_BLUE_DRIVER,
+        &rgb_pwm_cfg_6
+    );
+
+    uprintf("RGBDBG INIT 04 PWM6 OK\n");
+
+    /* GPIO -> PWM alternate function */
+
+    palSetLineMode(
+        GP22,
+        RGB_PWM_PAL_MODE
+    );
+
+    uprintf("RGBDBG INIT 05 GP22 OK\n");
+
+    palSetLineMode(
+        GP26,
+        RGB_PWM_PAL_MODE
+    );
+
+    uprintf("RGBDBG INIT 06 GP26 OK\n");
+
+    palSetLineMode(
+        GP28,
+        RGB_PWM_PAL_MODE
+    );
+
+    uprintf("RGBDBG INIT 07 GP28 OK\n");
+
+    /* Começa desligado */
+
+    rgb_pwm_write(
+        0,
+        0,
+        0
+    );
+
+    rgb_pwm_r = 0;
+    rgb_pwm_g = 0;
+    rgb_pwm_b = 0;
+
+    uprintf(
+        "RGBDBG INIT 08 PWM ZERO OK\n"
+    );
+
+    /* ============================================================
+     * PHASE SHIFT
+     * ============================================================
      */
+
+    rgb_pwm_debug_phase();
+
+    rgb_pwm_apply_phase();
+
+    uprintf(
+        "RGBDBG INIT 09 PHASE SHIFT OK\n"
+    );
+
+    uprintf(
+        "RGBDBG INIT 10 COMPLETE\n"
+    );
 }
 
-
-/*
- * Define uma cor.
- */
+/* ================================================================
+ * SET COLOR
+ * ================================================================ */
 
 void rgblight_driver_set_color(
     int index,
@@ -351,405 +453,88 @@ void rgblight_driver_set_color(
 ) {
     (void)index;
 
+    uprintf(
+        "RGBDBG SET_COLOR: R=%u G=%u B=%u\n",
+        r,
+        g,
+        b
+    );
+
     rgb_pwm_r = r;
     rgb_pwm_g = g;
     rgb_pwm_b = b;
 
-    rgb_pwm_dirty = true;
+    rgb_pwm_write(
+        r,
+        g,
+        b
+    );
+
+    uprintf(
+        "RGBDBG SET_COLOR DONE\n"
+    );
 }
 
-
-/*
- * Define a cor de todos os LEDs.
- *
- * Para o nosso hardware existem três linhas PWM,
- * portanto tratamos como uma única saída RGB.
- */
+/* ================================================================
+ * SET COLOR ALL
+ * ================================================================ */
 
 void rgblight_driver_set_color_all(
     uint8_t r,
     uint8_t g,
     uint8_t b
 ) {
+    uprintf(
+        "RGBDBG SET_COLOR_ALL: R=%u G=%u B=%u\n",
+        r,
+        g,
+        b
+    );
+
     rgb_pwm_r = r;
     rgb_pwm_g = g;
     rgb_pwm_b = b;
 
-    rgb_pwm_dirty = true;
+    rgb_pwm_write(
+        r,
+        g,
+        b
+    );
+
+    uprintf(
+        "RGBDBG SET_COLOR_ALL DONE\n"
+    );
 }
 
-
-/*
- * Flush.
- *
- * Não precisamos aplicar o PWM aqui.
- * A thread faz isso.
- */
+/* ================================================================
+ * FLUSH
+ * ================================================================ */
 
 void rgblight_driver_flush(void) {
-}
 
-
-/*
- * ================================================================
- * THREAD
- * ================================================================
- */
-
-static THD_WORKING_AREA(
-    waRgbPwmThread,
-    256
-);
-
-
-static THD_FUNCTION(
-    RgbPwmThread,
-    arg
-) {
-    (void)arg;
-
-    chRegSetThreadName("rgb_pwm");
-
+    uprintf(
+        "RGBDBG FLUSH: R=%u G=%u B=%u\n",
+        rgb_pwm_r,
+        rgb_pwm_g,
+        rgb_pwm_b
+    );
 
     /*
-     * ============================================================
-     * INICIA OS TRÊS DRIVERS
-     * ============================================================
-     */
-
-    pwmStart(
-        RGB_PWM_RED_DRIVER,
-        &rgb_pwm_cfg_3
-    );
-
-    pwmStart(
-        RGB_PWM_GREEN_DRIVER,
-        &rgb_pwm_cfg_5
-    );
-
-    pwmStart(
-        RGB_PWM_BLUE_DRIVER,
-        &rgb_pwm_cfg_6
-    );
-
-
-    /*
-     * ============================================================
-     * GPIOs
-     * ============================================================
-     */
-
-    palSetLineMode(
-        GP22,
-        PAL_MODE_ALTERNATE_PWM
-    );
-
-    palSetLineMode(
-        GP26,
-        PAL_MODE_ALTERNATE_PWM
-    );
-
-    palSetLineMode(
-        GP28,
-        PAL_MODE_ALTERNATE_PWM
-    );
-
-
-    /*
-     * ============================================================
-     * CONFIGURAÇÃO INICIAL DOS CONTADORES
-     * ============================================================
-     */
-
-#if RGB_PWM_PHASE_SHIFT_ENABLE
-
-    /*
-     * ------------------------------------------------------------
-     * COM PHASE SHIFT
-     * ------------------------------------------------------------
+     * Nada a fazer.
      *
-     * R = 0°
-     * G = 120°
-     * B = 240°
+     * O PWM é atualizado imediatamente.
      *
-     * Os três slices são preparados antes de serem habilitados.
+     * A fase continua sendo mantida pelo hardware.
      */
-
-    pwm_set_mask_enabled(0);
-
-
-    /*
-     * Vermelho
-     */
-
-    pwm_set_counter(
-        RGB_PWM_RED_SLICE,
-        rgb_pwm_counter_for_phase(
-            RGB_PWM_PHASE_R
-        )
-    );
-
-
-    /*
-     * Verde
-     */
-
-    pwm_set_counter(
-        RGB_PWM_GREEN_SLICE,
-        rgb_pwm_counter_for_phase(
-            RGB_PWM_PHASE_G
-        )
-    );
-
-
-    /*
-     * Azul
-     */
-
-    pwm_set_counter(
-        RGB_PWM_BLUE_SLICE,
-        rgb_pwm_counter_for_phase(
-            RGB_PWM_PHASE_B
-        )
-    );
-
-
-    /*
-     * Liga os três slices juntos.
-     */
-
-    pwm_set_mask_enabled(
-        RGB_PWM_SLICE_MASK
-    );
-
-#else
-
-    /*
-     * ------------------------------------------------------------
-     * SEM PHASE SHIFT
-     * ------------------------------------------------------------
-     */
-
-    pwm_set_mask_enabled(0);
-
-
-    pwm_set_counter(
-        RGB_PWM_RED_SLICE,
-        0
-    );
-
-    pwm_set_counter(
-        RGB_PWM_GREEN_SLICE,
-        0
-    );
-
-    pwm_set_counter(
-        RGB_PWM_BLUE_SLICE,
-        0
-    );
-
-
-    /*
-     * Liga os três juntos.
-     */
-
-    pwm_set_mask_enabled(
-        RGB_PWM_SLICE_MASK
-    );
-
-#endif
-
-
-    /*
-     * ============================================================
-     * COMEÇA COM OS LEDs DESLIGADOS
-     * ============================================================
-     */
-
-    pwmEnableChannel(
-        RGB_PWM_RED_DRIVER,
-        RGB_PWM_RED_CHANNEL,
-        0
-    );
-
-    pwmEnableChannel(
-        RGB_PWM_GREEN_DRIVER,
-        RGB_PWM_GREEN_CHANNEL,
-        0
-    );
-
-    pwmEnableChannel(
-        RGB_PWM_BLUE_DRIVER,
-        RGB_PWM_BLUE_CHANNEL,
-        0
-    );
-
-
-    /*
-     * ============================================================
-     * LOOP PRINCIPAL
-     * ============================================================
-     */
-
-    while (true) {
-
-        /*
-         * --------------------------------------------------------
-         * RGBLIGHT DESLIGADO
-         * --------------------------------------------------------
-         */
-
-        if (!rgblight_is_enabled()) {
-
-            pwmEnableChannel(
-                RGB_PWM_RED_DRIVER,
-                RGB_PWM_RED_CHANNEL,
-                0
-            );
-
-            pwmEnableChannel(
-                RGB_PWM_GREEN_DRIVER,
-                RGB_PWM_GREEN_CHANNEL,
-                0
-            );
-
-            pwmEnableChannel(
-                RGB_PWM_BLUE_DRIVER,
-                RGB_PWM_BLUE_CHANNEL,
-                0
-            );
-        }
-
-
-        /*
-         * --------------------------------------------------------
-         * NOVA COR
-         * --------------------------------------------------------
-         */
-
-        else if (rgb_pwm_dirty) {
-
-            uint8_t r;
-            uint8_t g;
-            uint8_t b;
-
-
-            /*
-             * Copia os três valores juntos.
-             */
-
-            chSysLock();
-
-            r = rgb_pwm_r;
-            g = rgb_pwm_g;
-            b = rgb_pwm_b;
-
-            rgb_pwm_dirty = false;
-
-            chSysUnlock();
-
-
-            /*
-             * ----------------------------------------------------
-             * LIMITE GERAL
-             * ----------------------------------------------------
-             */
-
-            r = rgb_pwm_limit(r);
-            g = rgb_pwm_limit(g);
-            b = rgb_pwm_limit(b);
-
-
-            /*
-             * ----------------------------------------------------
-             * BALANÇO DE BRANCO
-             * ----------------------------------------------------
-             */
-
-            r = rgb_pwm_scale(
-                r,
-                RGB_PWM_RED_SCALE
-            );
-
-            g = rgb_pwm_scale(
-                g,
-                RGB_PWM_GREEN_SCALE
-            );
-
-            b = rgb_pwm_scale(
-                b,
-                RGB_PWM_BLUE_SCALE
-            );
-
-
-            /*
-             * ----------------------------------------------------
-             * VERMELHO
-             * ----------------------------------------------------
-             */
-
-            pwmEnableChannel(
-                RGB_PWM_RED_DRIVER,
-                RGB_PWM_RED_CHANNEL,
-                r
-            );
-
-
-            /*
-             * ----------------------------------------------------
-             * VERDE
-             * ----------------------------------------------------
-             */
-
-            pwmEnableChannel(
-                RGB_PWM_GREEN_DRIVER,
-                RGB_PWM_GREEN_CHANNEL,
-                g
-            );
-
-
-            /*
-             * ----------------------------------------------------
-             * AZUL
-             * ----------------------------------------------------
-             */
-
-            pwmEnableChannel(
-                RGB_PWM_BLUE_DRIVER,
-                RGB_PWM_BLUE_CHANNEL,
-                b
-            );
-        }
-
-
-        /*
-         * --------------------------------------------------------
-         * NÃO PRENDE A CPU
-         * --------------------------------------------------------
-         *
-         * O PWM continua sendo produzido pelo hardware.
-         *
-         * A thread apenas atualiza os duty cycles.
-         */
-
-        chThdSleepMilliseconds(1);
-    }
 }
 
+/* ================================================================
+ * DRIVER
+ * ================================================================ */
 
-/*
- * ================================================================
- * INICIALIZAÇÃO DO DRIVER
- * ================================================================
- */
-
-static inline void rgb_pwm_init(void) {
-
-    chThdCreateStatic(
-        waRgbPwmThread,
-        sizeof(waRgbPwmThread),
-        NORMALPRIO - 1,
-        RgbPwmThread,
-        NULL
-    );
-}
+const rgblight_driver_t rgblight_driver = {
+    .init           = rgblight_driver_init,
+    .set_color      = rgblight_driver_set_color,
+    .set_color_all  = rgblight_driver_set_color_all,
+    .flush          = rgblight_driver_flush,
+};
