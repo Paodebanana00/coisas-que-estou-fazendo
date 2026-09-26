@@ -33,6 +33,32 @@
  */
 
 /* ================================================================
+ * DEBUG
+ * ================================================================
+ *
+ * 1 = habilita uprintf
+ * 0 = remove os uprintf da compilação
+ *
+ * Para debug:
+ *
+ *     #define RGB_PWM_DEBUG 1
+ *
+ * Para produção:
+ *
+ *     #define RGB_PWM_DEBUG 0
+ *
+ * ================================================================
+ */
+
+#define RGB_PWM_DEBUG 1
+
+#if RGB_PWM_DEBUG
+#    define RGB_PWM_LOG(...) uprintf(__VA_ARGS__)
+#else
+#    define RGB_PWM_LOG(...)
+#endif
+
+/* ================================================================
  * RP2040 PWM REGISTERS
  * ================================================================
  *
@@ -279,14 +305,14 @@ static inline void rgb_pwm_apply_phase(void) {
 
 static inline void rgb_pwm_debug_phase(void) {
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG PHASE: R=%u G=%u B=%u\n",
         (unsigned)RGB_PWM_PHASE_RED,
         (unsigned)RGB_PWM_PHASE_GREEN,
         (unsigned)RGB_PWM_PHASE_BLUE
     );
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG SLICES: R=%u G=%u B=%u\n",
         (unsigned)RGB_PWM_RED_SLICE,
         (unsigned)RGB_PWM_GREEN_SLICE,
@@ -318,7 +344,7 @@ static inline void rgb_pwm_write(
         RGB_PWM_BLUE_SCALE
     );
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG PWM WRITE: R=%u G=%u B=%u\n",
         r,
         g,
@@ -358,7 +384,7 @@ static inline void rgb_pwm_write(
 
 void rgblight_driver_init(void) {
 
-    uprintf("RGBDBG INIT 01\n");
+    RGB_PWM_LOG("RGBDBG INIT 01\n");
 
     /* PWM3 */
     pwmStart(
@@ -366,7 +392,7 @@ void rgblight_driver_init(void) {
         &rgb_pwm_cfg_3
     );
 
-    uprintf("RGBDBG INIT 02 PWM3 OK\n");
+    RGB_PWM_LOG("RGBDBG INIT 02 PWM3 OK\n");
 
     /* PWM5 */
     pwmStart(
@@ -374,7 +400,7 @@ void rgblight_driver_init(void) {
         &rgb_pwm_cfg_5
     );
 
-    uprintf("RGBDBG INIT 03 PWM5 OK\n");
+    RGB_PWM_LOG("RGBDBG INIT 03 PWM5 OK\n");
 
     /* PWM6 */
     pwmStart(
@@ -382,7 +408,7 @@ void rgblight_driver_init(void) {
         &rgb_pwm_cfg_6
     );
 
-    uprintf("RGBDBG INIT 04 PWM6 OK\n");
+    RGB_PWM_LOG("RGBDBG INIT 04 PWM6 OK\n");
 
     /* GPIO -> PWM alternate function */
 
@@ -391,21 +417,21 @@ void rgblight_driver_init(void) {
         RGB_PWM_PAL_MODE
     );
 
-    uprintf("RGBDBG INIT 05 GP22 OK\n");
+    RGB_PWM_LOG("RGBDBG INIT 05 GP22 OK\n");
 
     palSetLineMode(
         GP26,
         RGB_PWM_PAL_MODE
     );
 
-    uprintf("RGBDBG INIT 06 GP26 OK\n");
+    RGB_PWM_LOG("RGBDBG INIT 06 GP26 OK\n");
 
     palSetLineMode(
         GP28,
         RGB_PWM_PAL_MODE
     );
 
-    uprintf("RGBDBG INIT 07 GP28 OK\n");
+    RGB_PWM_LOG("RGBDBG INIT 07 GP28 OK\n");
 
     /* Começa desligado */
 
@@ -419,7 +445,7 @@ void rgblight_driver_init(void) {
     rgb_pwm_g = 0;
     rgb_pwm_b = 0;
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG INIT 08 PWM ZERO OK\n"
     );
 
@@ -432,11 +458,11 @@ void rgblight_driver_init(void) {
 
     rgb_pwm_apply_phase();
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG INIT 09 PHASE SHIFT OK\n"
     );
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG INIT 10 COMPLETE\n"
     );
 }
@@ -453,7 +479,7 @@ void rgblight_driver_set_color(
 ) {
     (void)index;
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG SET_COLOR: R=%u G=%u B=%u\n",
         r,
         g,
@@ -470,7 +496,7 @@ void rgblight_driver_set_color(
         b
     );
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG SET_COLOR DONE\n"
     );
 }
@@ -484,7 +510,7 @@ void rgblight_driver_set_color_all(
     uint8_t g,
     uint8_t b
 ) {
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG SET_COLOR_ALL: R=%u G=%u B=%u\n",
         r,
         g,
@@ -501,7 +527,7 @@ void rgblight_driver_set_color_all(
         b
     );
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG SET_COLOR_ALL DONE\n"
     );
 }
@@ -512,7 +538,7 @@ void rgblight_driver_set_color_all(
 
 void rgblight_driver_flush(void) {
 
-    uprintf(
+    RGB_PWM_LOG(
         "RGBDBG FLUSH: R=%u G=%u B=%u\n",
         rgb_pwm_r,
         rgb_pwm_g,
