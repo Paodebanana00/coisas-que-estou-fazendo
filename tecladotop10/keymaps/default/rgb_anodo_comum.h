@@ -329,54 +329,52 @@ static inline void rgb_pwm_write(
     uint8_t g,
     uint8_t b
 ) {
+
+
     r = rgb_pwm_scale(
         r,
         RGB_PWM_RED_SCALE
     );
+
 
     g = rgb_pwm_scale(
         g,
         RGB_PWM_GREEN_SCALE
     );
 
+
     b = rgb_pwm_scale(
         b,
         RGB_PWM_BLUE_SCALE
     );
 
+
     RGB_PWM_LOG(
         "RGBDBG PWM WRITE: R=%u G=%u B=%u\n",
-        r,
-        g,
-        b
+        (unsigned)r,
+        (unsigned)g,
+        (unsigned)b
     );
 
-    /*
-     * SOMENTE altera o duty.
-     *
-     * NÃO altera os contadores.
-     *
-     * Assim o phase shift continua intacto.
-     */
 
-    pwmEnableChannel(
-        RGB_PWM_RED_DRIVER,
-        RGB_PWM_RED_CHANNEL,
-        r
-    );
+    RGB_PWM_SLICE_REG(
+        RGB_PWM_RED_SLICE,
+        RGB_PWM_CC_OFFSET
+    ) = (uint32_t)r;
 
-    pwmEnableChannel(
-        RGB_PWM_GREEN_DRIVER,
-        RGB_PWM_GREEN_CHANNEL,
-        g
-    );
 
-    pwmEnableChannel(
-        RGB_PWM_BLUE_DRIVER,
-        RGB_PWM_BLUE_CHANNEL,
-        b
-    );
+    RGB_PWM_SLICE_REG(
+        RGB_PWM_GREEN_SLICE,
+        RGB_PWM_CC_OFFSET
+    ) = (uint32_t)g;
+
+
+    RGB_PWM_SLICE_REG(
+        RGB_PWM_BLUE_SLICE,
+        RGB_PWM_CC_OFFSET
+    ) = (uint32_t)b;
 }
+
 
 /* ================================================================
  * INIT
